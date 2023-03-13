@@ -443,7 +443,6 @@ impl Parser {
                 _ => (), // There are several other `Event`s we do not consider here
             }
 
-            // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
             match &mut pb {
                 Some(p) => {
                     p.update(buf.len());
@@ -451,6 +450,7 @@ impl Parser {
                 None => {}
             }
 
+            // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
             buf.clear();
             text_buf.clear();
         }
@@ -464,7 +464,21 @@ impl Parser {
             None => {}
         }
 
-        site.pages.par_iter_mut().for_each(|p: &mut Page| {
+        if self.progress_bar {
+            pb = Some(tqdm!(
+                total = site.pages.len(),
+                ncols = 40_i16,
+                force_refresh = true,
+                bar_format = "{desc suffix='Parsing pages'}|{animation}| {spinner} {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s, eta: {remaining human=true})",
+                spinner = Spinner::new(
+                    &["▁▂▃", "▂▃▄", "▃▄▅", "▄▅▆", "▅▆▇", "▆▇█", "▇█▇", "█▇▆", "▇▆▅", "▆▅▄", "▅▄▃", "▄▃▂", "▃▂▁"],
+                    30.0,
+                    1.0,
+                )
+            ));
+        }
+
+        for p in &mut site.pages {
             p.revisions.par_iter_mut().for_each(|r: &mut PageRevision| {
                 if self.process_wiki_text {
                     let parsed_output = self.wiki_config.parse(r.text.as_str());
@@ -478,8 +492,24 @@ impl Parser {
                 }
 
                 r.text = r.text.trim().to_string();
-            })
-        });
+            });
+
+            match &mut pb {
+                Some(p) => {
+                    p.update(buf.len());
+                },
+                None => {}
+            };
+        }
+
+        match &mut pb {
+            Some(p) => {
+                p.set_bar_format("{desc suffix='Finished Parsing Wikipedia File'}|{animation}| {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s)").unwrap();
+                p.clear();
+                p.refresh();
+            }
+            None => {}
+        }
 
         Ok(site)
     }
