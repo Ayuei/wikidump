@@ -28,6 +28,7 @@ use bzip2::read::BzDecoder;
 use bzip2::read::MultiBzDecoder;
 use kdam::Spinner;
 use kdam::{tqdm, BarExt};
+use log::{info, warn};
 use parse_wiki_text::{Configuration, ConfigurationSource, Node};
 use quick_xml::events::Event;
 use quick_xml::Reader;
@@ -92,7 +93,7 @@ impl PageRevision {
 pub struct Site {
     /// The name of the website, e.g., "Wikipedia".
     pub name: String,
-    /// The base URL of the website, e.g., "https://en.wikipedia.org/wiki/Main_Page".
+    /// The base URL of the website, e.g., <https://en.wikipedia.org/wiki/Main_Page>.
     pub url: String,
     /// The wiki pages belonging to the website.
     pub pages: Vec<Page>,
@@ -112,6 +113,7 @@ fn get_bzip_filesize<P>(file: P) -> usize
 where
     P: AsRef<Path>,
 {
+    info!("Reading bzip2 file to get file size for progress bar. This might take a while!");
     let file = File::open(file).unwrap();
     let mut reader = BufReader::new(MultiBzDecoder::new(file));
 
@@ -126,7 +128,11 @@ where
                 }
                 c += v;
             }
-            Err(err) => panic!("Unable to read file due to error: {}", err),
+            Err(err) => {
+                warn!("Unable to read file due to error: {}", err);
+                c = 0;
+                break;
+            }
         }
     }
 
@@ -218,8 +224,8 @@ impl Parser {
     }
 
     /// Sets whether the parser should show a progress bar for bytes read
-    pub fn with_progress_bar(mut self, value: bool) -> Self {
-        self.progress_bar = value;
+    pub fn with_progress_bar(mut self) -> Self {
+        self.progress_bar = true;
         self
     }
 
@@ -227,11 +233,10 @@ impl Parser {
     ///
     /// Multistream decoder is for Wikipedia dump that have "multistream" in the file name
     /// and won't be decoded properly by the standard bzip2 decoder.
-    pub fn with_multistream_bzip2(mut self, value: bool) -> Self {
-        self.multistream = value;
+    pub fn with_multistream_bzip2(mut self) -> Self {
+        self.multistream = true;
         self
     }
-
     /// Sets whether the parser should remove newlines or turn them into normal
     /// newline characters. This will only have an effect if processing wiki
     /// text is enabled.
@@ -244,11 +249,11 @@ impl Parser {
     ///
     /// let parser = Parser::new()
     ///     .use_config(config::wikipedia::english())
-    ///     .remove_newlines(true) // Enable newline removal
+    ///     .remove_newlines() // Enable newline removal
     ///     .process_text(true);
     /// ```
-    pub fn remove_newlines(mut self, value: bool) -> Self {
-        self.remove_newlines = value;
+    pub fn remove_newlines(mut self) -> Self {
+        self.remove_newlines = true;
         self
     }
 
@@ -362,7 +367,7 @@ impl Parser {
                 total = self.progress_length,
                 ncols = 40_i16,
                 force_refresh = true,
-                bar_format = "{desc suffix=' '}|{animation}| {spinner} {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s, eta: {remaining human=true})",
+                bar_format = "{desc suffix='Parsing Wikipedia File'}|{animation}| {spinner} {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s, eta: {remaining human=true})",
                 spinner = Spinner::new(
                     &["▁▂▃", "▂▃▄", "▃▄▅", "▄▅▆", "▅▆▇", "▆▇█", "▇█▇", "█▇▆", "▇▆▅", "▆▅▄", "▅▄▃", "▄▃▂", "▃▂▁"],
                     30.0,
@@ -448,6 +453,15 @@ impl Parser {
 
             buf.clear();
             text_buf.clear();
+        }
+
+        match &mut pb {
+            Some(p) => {
+                p.set_bar_format("{desc suffix='Finished Parsing Wikipedia File'}|{animation}| {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s)").unwrap();
+                p.clear();
+                p.refresh();
+            }
+            None => {}
         }
 
         site.pages.par_iter_mut().for_each(|p: &mut Page| {
