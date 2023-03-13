@@ -25,6 +25,8 @@
 
 pub mod config;
 use bzip2::read::BzDecoder;
+use kdam::Spinner;
+use kdam::{tqdm, BarExt};
 use parse_wiki_text::{Configuration, ConfigurationSource, Node};
 use quick_xml::events::Event;
 use quick_xml::Reader;
@@ -32,8 +34,6 @@ use rayon::prelude::*;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
-use kdam::Spinner;
-use kdam::{tqdm, BarExt};
 
 type Exception = Box<dyn std::error::Error + 'static>;
 
@@ -123,14 +123,20 @@ pub struct Parser {
     // Progress Bar,
     progress_bar: bool,
     // Progress Bar length,
-    progress_length: u64,
+    progress_length: usize,
     /// The specific wiki configuration for parsing.
     wiki_config: Configuration,
 }
 
+impl Default for Parser {
+    fn default() -> Parser {
+        Self::new()
+    }
+}
+
 impl Parser {
     /// Construct a new parser with the default settings.
-    pub fn new<'c>() -> Parser {
+    pub fn new() -> Parser {
         Parser {
             process_wiki_text: true,
             remove_newlines: false,
@@ -241,7 +247,7 @@ impl Parser {
         P: AsRef<Path>,
     {
         if self.progress_bar {
-            self.progress_length = std::fs::metadata(&dump)?.len();
+            self.progress_length = std::fs::metadata(&dump)?.len() as usize;
         }
 
         if is_compressed(&dump) {
@@ -251,8 +257,7 @@ impl Parser {
 
             self.parse(reader)
         } else {
-            let reader = Reader::from_file(dump)
-                .expect("Could not create XML reader from file");
+            let reader = Reader::from_file(dump).expect("Could not create XML reader from file");
 
             self.parse(reader)
         }
@@ -271,7 +276,8 @@ impl Parser {
     /// let contents = fs::read_to_string("tests/enwiki-articles-partial.xml").unwrap();
     /// let site = parser.parse_str(contents.as_str());
     /// ```
-    pub fn parse_str(&self, text: &str) -> Result<Site, Exception> {
+    pub fn parse_str(&mut self, text: &str) -> Result<Site, Exception> {
+        self.progress_length = text.len();
         let reader = Reader::from_str(text);
 
         self.parse(reader)
@@ -295,7 +301,7 @@ impl Parser {
 
         if self.progress_bar {
             pb = Some(tqdm!(
-                total = self.progress_length as usize,
+                total = self.progress_length,
                 ncols = 40_i16,
                 force_refresh = true,
                 bar_format = "{desc suffix=' '}|{animation}| {spinner} {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s, eta: {remaining human=true})",
@@ -376,10 +382,10 @@ impl Parser {
 
             // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
             match &mut pb {
-                Some(p) => { 
+                Some(p) => {
                     p.update(buf.len());
-                },
-                None => {},
+                }
+                None => {}
             }
 
             buf.clear();
@@ -395,8 +401,8 @@ impl Parser {
                 }
 
                 if self.remove_newlines {
-                    r.text = r.text.replace("\n", "");
-                    r.text = r.text.replace("\r", "");
+                    r.text = r.text.replace('\n', "");
+                    r.text = r.text.replace('\r', "");
                 }
 
                 r.text = r.text.trim().to_string();
@@ -415,7 +421,7 @@ fn get_text_from_nodes(nodes: &Vec<Node>) -> String {
     nodes.iter().for_each(|node| {
         match node {
             Node::Text { value, .. } => node_text.push_str(value),
-            Node::ParagraphBreak { .. } => node_text.push_str("\n"),
+            Node::ParagraphBreak { .. } => node_text.push('\n'),
             Node::CharacterEntity { character, .. } => {
                 node_text.push_str(character.to_string().as_str())
             }
@@ -424,9 +430,9 @@ fn get_text_from_nodes(nodes: &Vec<Node>) -> String {
                 node_text.push_str(get_text_from_nodes(nodes).as_str())
             }
             Node::Heading { nodes, .. } => {
-                node_text.push_str("\n");
+                node_text.push('\n');
                 node_text.push_str(get_text_from_nodes(nodes).as_str());
-                node_text.push_str("\n");
+                node_text.push('\n');
             }
             Node::Image { .. } => {
                 // @TODO @Completeness: Allow image text.
