@@ -24,7 +24,7 @@
 //! ```
 
 pub mod config;
-use bzip2::read::BzDecoder;
+use bzip2::read::{BzDecoder, MultiBzDecoder};
 use kdam::Spinner;
 use kdam::{tqdm, BarExt};
 use parse_wiki_text::{Configuration, ConfigurationSource, Node};
@@ -124,6 +124,8 @@ pub struct Parser {
     progress_bar: bool,
     // Progress Bar length,
     progress_length: usize,
+    // Use multistream bzip decoder,
+    multistream: bool,
     /// The specific wiki configuration for parsing.
     wiki_config: Configuration,
 }
@@ -143,6 +145,7 @@ impl Parser {
             exclude_pages: true,
             progress_bar: false,
             progress_length: 0,
+            multistream: false,
             wiki_config: Configuration::default(),
         }
     }
@@ -188,8 +191,18 @@ impl Parser {
         self
     }
 
+    /// Sets whether the parser should show a progress bar for bytes read
     pub fn with_progress_bar(mut self, value: bool) -> Self {
         self.progress_bar = value;
+        self
+    }
+
+    /// Sets whether the parser should use the multi-stream bzip decoder
+    ///
+    /// Multistream decoder is for Wikipedia dump that have "multistream" in the file name
+    /// and won't be decoded properly by the standard bzip2 decoder.
+    pub fn with_multistream_bzip2(mut self, value: bool) -> Self {
+        self.multistream = value;
         self
     }
 
@@ -252,10 +265,19 @@ impl Parser {
 
         if is_compressed(&dump) {
             let file = File::open(dump)?;
-            let reader = BufReader::new(BzDecoder::new(file));
-            let reader = Reader::from_reader(reader);
 
-            self.parse(reader)
+            match self.multistream {
+                true => {
+                    let reader = BufReader::new(MultiBzDecoder::new(file));
+                    let reader = Reader::from_reader(reader);
+                    self.parse(reader)
+                }
+                false => {
+                    let reader = BufReader::new(BzDecoder::new(file));
+                    let reader = Reader::from_reader(reader);
+                    self.parse(reader)
+                }
+            }
         } else {
             let reader = Reader::from_file(dump).expect("Could not create XML reader from file");
 
