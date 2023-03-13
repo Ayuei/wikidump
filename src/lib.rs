@@ -24,7 +24,8 @@
 //! ```
 
 pub mod config;
-use bzip2::read::{BzDecoder, MultiBzDecoder};
+use bzip2::read::BzDecoder;
+use bzip2::read::MultiBzDecoder;
 use kdam::Spinner;
 use kdam::{tqdm, BarExt};
 use parse_wiki_text::{Configuration, ConfigurationSource, Node};
@@ -105,6 +106,31 @@ impl Site {
             pages: vec![],
         }
     }
+}
+
+fn get_bzip_filesize<P>(file: P) -> usize
+where
+    P: AsRef<Path>,
+{
+    let file = File::open(file).unwrap();
+    let mut reader = BufReader::new(MultiBzDecoder::new(file));
+
+    let mut buf: [u8; 1000] = [0; 1000];
+    let mut c = 0;
+
+    loop {
+        match reader.read(&mut buf) {
+            Ok(v) => {
+                if v == 0 {
+                    break;
+                }
+                c += v;
+            }
+            Err(err) => panic!("Unable to read file due to error: {}", err),
+        }
+    }
+
+    c
 }
 
 /// A parser which can process uncompressed Mediawiki XML dumps (backups).
@@ -257,28 +283,38 @@ impl Parser {
     /// ```
     pub fn parse_file<P>(&mut self, dump: P) -> Result<Site, Exception>
     where
-        P: AsRef<Path>,
+        P: AsRef<Path> + Copy,
     {
-        if self.progress_bar {
-            self.progress_length = std::fs::metadata(&dump)?.len() as usize;
-        }
-
         if is_compressed(&dump) {
             let file = File::open(dump)?;
 
             match self.multistream {
                 true => {
                     let reader = BufReader::new(MultiBzDecoder::new(file));
+
+                    if self.progress_bar {
+                        self.progress_length = get_bzip_filesize(dump);
+                    }
+
                     let reader = Reader::from_reader(reader);
                     self.parse(reader)
                 }
                 false => {
                     let reader = BufReader::new(BzDecoder::new(file));
+
+                    if self.progress_bar {
+                        self.progress_length = get_bzip_filesize(dump);
+                    }
+
                     let reader = Reader::from_reader(reader);
                     self.parse(reader)
                 }
             }
         } else {
+            if self.progress_bar {
+                self.progress_length = std::fs::metadata(&dump)?.len() as usize;
+            }
+
             let reader = Reader::from_file(dump).expect("Could not create XML reader from file");
 
             self.parse(reader)
