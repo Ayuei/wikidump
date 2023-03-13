@@ -496,7 +496,7 @@ impl Parser {
 
             match &mut pb {
                 Some(p) => {
-                    p.update(buf.len());
+                    p.update(1);
                 },
                 None => {}
             };
