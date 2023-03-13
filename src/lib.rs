@@ -30,7 +30,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use rayon::prelude::*;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek};
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 use kdam::Spinner;
 use kdam::{tqdm, BarExt};
@@ -123,7 +123,7 @@ pub struct Parser {
     // Progress Bar,
     progress_bar: bool,
     // Progress Bar length,
-    progress_length: usize,
+    progress_length: u64,
     /// The specific wiki configuration for parsing.
     wiki_config: Configuration,
 }
@@ -241,7 +241,7 @@ impl Parser {
         P: AsRef<Path>,
     {
         if self.progress_bar {
-            self.progress_length = File::open(&dump)?.bytes().count();
+            self.progress_length = std::fs::metadata(&dump)?.len();
         }
 
         if is_compressed(&dump) {
@@ -295,7 +295,7 @@ impl Parser {
 
         if self.progress_bar {
             pb = Some(tqdm!(
-                total = self.progress_length,
+                total = self.progress_length as usize,
                 ncols = 40_i16,
                 force_refresh = true,
                 bar_format = "{desc suffix=' '}|{animation}| {spinner} {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s, eta: {remaining human=true})",
