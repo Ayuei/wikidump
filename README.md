@@ -6,6 +6,12 @@ This crate processes Mediawiki XML dump files and turns them into easily
 consumed pieces of data for language analysis, natural langauge processing,
 and other applications.
 
+
+# This fork includes
+- Multi-stream decode support
+- A progressbar
+- Some minor performance fixes 
+
 ## Example
 ```rust
 let parser = Parser::new()
