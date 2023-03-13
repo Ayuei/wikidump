@@ -30,8 +30,10 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use rayon::prelude::*;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Seek};
 use std::path::Path;
+use kdam::Spinner;
+use kdam::{tqdm, BarExt};
 
 type Exception = Box<dyn std::error::Error + 'static>;
 
@@ -118,6 +120,10 @@ pub struct Parser {
     /// pages, or any other kind of page) will be included in the final output.
     /// Any ignored pages will simply be skipped by the parser.
     exclude_pages: bool,
+    // Progress Bar,
+    progress_bar: bool,
+    // Progress Bar length,
+    progress_length: usize,
     /// The specific wiki configuration for parsing.
     wiki_config: Configuration,
 }
@@ -129,6 +135,8 @@ impl Parser {
             process_wiki_text: true,
             remove_newlines: false,
             exclude_pages: true,
+            progress_bar: false,
+            progress_length: 0,
             wiki_config: Configuration::default(),
         }
     }
@@ -171,6 +179,11 @@ impl Parser {
     /// ```
     pub fn exclude_pages(mut self, value: bool) -> Self {
         self.exclude_pages = value;
+        self
+    }
+
+    pub fn with_progress_bar(mut self, value: bool) -> Self {
+        self.progress_bar = value;
         self
     }
 
@@ -223,10 +236,14 @@ impl Parser {
     /// let parser = Parser::new();
     /// let site = parser.parse_file("tests/enwiki-articles-partial.xml");
     /// ```
-    pub fn parse_file<P>(&self, dump: P) -> Result<Site, Exception>
+    pub fn parse_file<P>(&mut self, dump: P) -> Result<Site, Exception>
     where
         P: AsRef<Path>,
     {
+        if self.progress_bar {
+            self.progress_length = File::open(&dump)?.bytes().count();
+        }
+
         if is_compressed(&dump) {
             let file = File::open(dump)?;
             let reader = BufReader::new(BzDecoder::new(file));
@@ -234,7 +251,8 @@ impl Parser {
 
             self.parse(reader)
         } else {
-            let reader = Reader::from_file(dump).expect("Could not create XML reader from file");
+            let reader = Reader::from_file(dump)
+                .expect("Could not create XML reader from file");
 
             self.parse(reader)
         }
@@ -273,6 +291,21 @@ impl Parser {
         let mut current_page = Page::new();
         let mut current_page_revision = PageRevision::new();
         let mut skipping_current_page = false;
+        let mut pb = None;
+
+        if self.progress_bar {
+            pb = Some(tqdm!(
+                total = self.progress_length,
+                ncols = 40_i16,
+                force_refresh = true,
+                bar_format = "{desc suffix=' '}|{animation}| {spinner} {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s, eta: {remaining human=true})",
+                spinner = Spinner::new(
+                    &["▁▂▃", "▂▃▄", "▃▄▅", "▄▅▆", "▅▆▇", "▆▇█", "▇█▇", "█▇▆", "▇▆▅", "▆▅▄", "▅▄▃", "▄▃▂", "▃▂▁"],
+                    30.0,
+                    1.0,
+                )
+            ));
+        }
 
         loop {
             match reader.read_event(&mut buf) {
@@ -342,6 +375,13 @@ impl Parser {
             }
 
             // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
+            match &mut pb {
+                Some(p) => { 
+                    p.update(buf.len());
+                },
+                None => {},
+            }
+
             buf.clear();
             text_buf.clear();
         }
