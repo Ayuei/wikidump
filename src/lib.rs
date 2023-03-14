@@ -464,21 +464,22 @@ impl Parser {
             None => {}
         }
 
-        if self.progress_bar {
-            pb = Some(tqdm!(
-                total = site.pages.len(),
-                ncols = 40_i16,
-                force_refresh = true,
-                bar_format = "{desc suffix='Parsing pages'}|{animation}| {spinner} {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s, eta: {remaining human=true})",
-                spinner = Spinner::new(
-                    &["▁▂▃", "▂▃▄", "▃▄▅", "▄▅▆", "▅▆▇", "▆▇█", "▇█▇", "█▇▆", "▇▆▅", "▆▅▄", "▅▄▃", "▄▃▂", "▃▂▁"],
-                    30.0,
-                    1.0,
-                )
-            ));
-        }
+        //if self.progress_bar {
+        //    pb = Some(tqdm!(
+        //        total = site.pages.len(),
+        //        ncols = 40_i16,
+        //        force_refresh = true,
+        //        bar_format = "{desc suffix='Parsing pages'}|{animation}| {spinner} {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s, eta: {remaining human=true})",
+        //        spinner = Spinner::new(
+        //            &["▁▂▃", "▂▃▄", "▃▄▅", "▄▅▆", "▅▆▇", "▆▇█", "▇█▇", "█▇▆", "▇▆▅", "▆▅▄", "▅▄▃", "▄▃▂", "▃▂▁"],
+        //            30.0,
+        //            1.0,
+        //        )
+        //    ));
+        //}
 
         for p in &mut site.pages {
+            info!("{}", &p.title);
             p.revisions.par_iter_mut().for_each(|r: &mut PageRevision| {
                 if self.process_wiki_text {
                     let parsed_output = self.wiki_config.parse(r.text.as_str());
@@ -494,22 +495,22 @@ impl Parser {
                 r.text = r.text.trim().to_string();
             });
 
-            match &mut pb {
-                Some(p) => {
-                    p.update(1);
-                },
-                None => {}
-            };
+            //match &mut pb {
+            //    Some(p) => {
+            //        p.update(1);
+            //    },
+            //    None => {}
+            //};
         }
 
-        match &mut pb {
-            Some(p) => {
-                p.set_bar_format("{desc suffix='Finished Parsing Wikipedia File'}|{animation}| {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s)").unwrap();
-                p.clear();
-                p.refresh();
-            }
-            None => {}
-        }
+        //match &mut pb {
+        //    Some(p) => {
+        //        p.set_bar_format("{desc suffix='Finished Parsing Wikipedia File'}|{animation}| {count}/{total} [{percentage:.0}%] in {elapsed human=true} ({rate:.1}/s)").unwrap();
+        //        p.clear();
+        //        p.refresh();
+        //    }
+        //    None => {}
+        //}
 
         Ok(site)
     }
@@ -517,8 +518,7 @@ impl Parser {
 
 // TODO: document
 fn get_text_from_nodes(nodes: &Vec<Node>) -> String {
-    // 32 is just a guess here, not really well benchmarked or anything
-    let mut node_text = String::with_capacity(64 + 64 * nodes.len());
+    let mut node_text = String::new();
 
     nodes.iter().for_each(|node| {
         match node {
